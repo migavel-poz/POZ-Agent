@@ -14,7 +14,7 @@ export default function PostGenerationSkill() {
   const [targetAudience, setTargetAudience] = useState("");
   const [additionalContext, setAdditionalContext] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -47,7 +47,7 @@ export default function PostGenerationSkill() {
     setSaving(false);
   };
 
-  const slides = (output?.slides as Array<Record<string, unknown>>) || [];
+  const slides = (output?.slides as Array<Record<string, any>>) || [];
   const threadPosts = (output?.threadPosts as string[]) || [];
   const hashtags = (output?.hashtags as string[]) || [];
 

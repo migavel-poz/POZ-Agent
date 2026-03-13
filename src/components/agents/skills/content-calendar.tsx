@@ -13,7 +13,7 @@ export default function ContentCalendarSkill() {
   const [platforms, setPlatforms] = useState("LinkedIn");
   const [brandContext, setBrandContext] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -48,7 +48,7 @@ export default function ContentCalendarSkill() {
 
   const entries = (output?.entries as Array<Record<string, string>>) || [];
   const themes = (output?.themes as string[]) || [];
-  const weekly = (output?.weeklyBreakdown as Array<Record<string, unknown>>) || [];
+  const weekly = (output?.weeklyBreakdown as Array<Record<string, any>>) || [];
 
   return (
     <div>

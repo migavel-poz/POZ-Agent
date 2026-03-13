@@ -103,7 +103,7 @@ function seedDefaults(db: Database.Database) {
     insert.run("Shweta", "shweta@poz.ai", "lead");
     insert.run("Miguel", "miguel@poz.ai", "member");
     insert.run("Tejas", "tejas@poz.ai", "member");
-    insert.run("Bhubesh", "bhubesh@poz.ai", "member");
+    insert.run("Boobesh", "boobesh@poz.ai", "member");
     insert.run("Lakshman", "lakshman@poz.ai", "member");
     insert.run("Rucha", "rucha@poz.ai", "designer");
     insert.run("Karishma", "karishma@poz.ai", "designer");

@@ -11,7 +11,7 @@ export default function PerformanceInsightSkill() {
   const [timeframe, setTimeframe] = useState("last-30-days");
   const [goals, setGoals] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 

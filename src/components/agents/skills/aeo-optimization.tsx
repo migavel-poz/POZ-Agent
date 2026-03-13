@@ -12,7 +12,7 @@ export default function AeoOptimizationSkill() {
   const [existingContent, setExistingContent] = useState("");
   const [competitors, setCompetitors] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 

@@ -13,7 +13,7 @@ export default function TrendRadarSkill() {
   const [existingKnowledge, setExistingKnowledge] = useState("");
   const [focusLens, setFocusLens] = useState("all");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -46,8 +46,8 @@ export default function TrendRadarSkill() {
     setSaving(false);
   };
 
-  const trends = (output?.trends as Array<Record<string, unknown>>) || [];
-  const convergences = (output?.convergences as Array<Record<string, unknown>>) || [];
+  const trends = (output?.trends as Array<Record<string, any>>) || [];
+  const convergences = (output?.convergences as Array<Record<string, any>>) || [];
   const blindSpots = (output?.blindSpots as string[]) || [];
   const strategicImplications = (output?.strategicImplications as string[]) || [];
   const recommendedWatches = (output?.recommendedWatches as string[]) || [];
@@ -62,7 +62,7 @@ export default function TrendRadarSkill() {
     return "gray";
   };
 
-  const renderTrendCard = (trend: Record<string, unknown>, i: number) => (
+  const renderTrendCard = (trend: Record<string, any>, i: number) => (
     <OutputCard key={i}>
       <div className="flex items-start justify-between mb-2">
         <p className="text-sm font-medium">{trend.name as string}</p>

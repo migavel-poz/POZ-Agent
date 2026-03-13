@@ -13,7 +13,7 @@ export default function CompetitorProfileSkill() {
   const [knownInfo, setKnownInfo] = useState("");
   const [focusAreas, setFocusAreas] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -48,10 +48,10 @@ export default function CompetitorProfileSkill() {
   };
 
   const threatLevel = output?.threatLevel as string;
-  const product = output?.product as Record<string, unknown> | undefined;
-  const pricing = output?.pricing as Record<string, unknown> | undefined;
-  const positioning = output?.positioning as Record<string, unknown> | undefined;
-  const gtmStrategy = output?.gtmStrategy as Record<string, unknown> | undefined;
+  const product = output?.product as Record<string, any> | undefined;
+  const pricing = output?.pricing as Record<string, any> | undefined;
+  const positioning = output?.positioning as Record<string, any> | undefined;
+  const gtmStrategy = output?.gtmStrategy as Record<string, any> | undefined;
   const strengths = (output?.strengths as string[]) || [];
   const weaknesses = (output?.weaknesses as string[]) || [];
   const recentMoves = (output?.recentMoves as string[]) || [];

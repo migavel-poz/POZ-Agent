@@ -12,7 +12,7 @@ export default function RepurposingSkill() {
   const [targetFormats, setTargetFormats] = useState("linkedin-post, twitter-thread, carousel");
   const [brandVoice, setBrandVoice] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -47,7 +47,7 @@ export default function RepurposingSkill() {
 
   const keyInsights = (output?.keyInsights as string[]) || [];
   const quotableLines = (output?.quotableLines as string[]) || [];
-  const outputs = (output?.outputs as Array<Record<string, unknown>>) || [];
+  const outputs = (output?.outputs as Array<Record<string, any>>) || [];
   const [activeTab, setActiveTab] = useState(0);
 
   return (

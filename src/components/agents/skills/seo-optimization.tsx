@@ -13,7 +13,7 @@ export default function SeoOptimizationSkill() {
   const [pageContent, setPageContent] = useState("");
   const [competitorUrls, setCompetitorUrls] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 

@@ -13,7 +13,7 @@ export default function AeoAuditSkill() {
   const [competitors, setCompetitors] = useState("");
   const [platforms, setPlatforms] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -48,12 +48,12 @@ export default function AeoAuditSkill() {
   };
 
   const overallScore = output?.overallScore as number | undefined;
-  const scorecard = (output?.scorecard as Array<Record<string, unknown>>) || [];
-  const platformScores = (output?.platformScores as Array<Record<string, unknown>>) || [];
-  const queryAnalysis = (output?.queryAnalysis as Array<Record<string, unknown>>) || [];
-  const gapAnalysis = output?.gapAnalysis as Record<string, unknown> | undefined;
-  const competitorComparison = (output?.competitorComparison as Array<Record<string, unknown>>) || [];
-  const recommendations = (output?.recommendations as Array<Record<string, unknown>>) || [];
+  const scorecard = (output?.scorecard as Array<Record<string, any>>) || [];
+  const platformScores = (output?.platformScores as Array<Record<string, any>>) || [];
+  const queryAnalysis = (output?.queryAnalysis as Array<Record<string, any>>) || [];
+  const gapAnalysis = output?.gapAnalysis as Record<string, any> | undefined;
+  const competitorComparison = (output?.competitorComparison as Array<Record<string, any>>) || [];
+  const recommendations = (output?.recommendations as Array<Record<string, any>>) || [];
 
   const [expandedQueries, setExpandedQueries] = useState<Set<number>>(new Set());
   const toggleQuery = (i: number) => {
@@ -69,6 +69,18 @@ export default function AeoAuditSkill() {
     if (p === "high") return "yellow";
     return "gray";
   };
+
+  const getString = (value: unknown): string | undefined => (
+    typeof value === "string" ? value : undefined
+  );
+
+  const getNumber = (value: unknown): number | undefined => (
+    typeof value === "number" ? value : undefined
+  );
+
+  const getStringArray = (value: unknown): string[] => (
+    Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []
+  );
 
   return (
     <div>
@@ -164,23 +176,23 @@ export default function AeoAuditSkill() {
                       className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                     >
                       <div className="flex items-center gap-2">
-                        {qa.brandMentioned ? (
+                        {qa.brandMentioned === true ? (
                           <span className="text-green-600 dark:text-green-400 font-bold">&#10003;</span>
                         ) : (
                           <span className="text-red-600 dark:text-red-400 font-bold">&#10007;</span>
                         )}
-                        <span className="font-medium">{qa.query as string}</span>
+                        <span className="font-medium">{getString(qa.query) || "Untitled query"}</span>
                       </div>
                       <svg className={`w-4 h-4 transition-transform ${expandedQueries.has(i) ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
                     </button>
                     {expandedQueries.has(i) && (
                       <div className="px-3 pb-3 text-sm space-y-1 border-t pt-2">
-                        {qa.position != null && <p><span className="font-medium">Position:</span> {qa.position as number}</p>}
-                        {qa.context && <p><span className="font-medium">Context:</span> {qa.context as string}</p>}
-                        {(qa.competitorsMentioned as string[])?.length > 0 && (
+                        {getNumber(qa.position) != null && <p><span className="font-medium">Position:</span> {getNumber(qa.position)}</p>}
+                        {typeof qa.context === "string" && <p><span className="font-medium">Context:</span> {qa.context}</p>}
+                        {getStringArray(qa.competitorsMentioned).length > 0 && (
                           <div>
                             <span className="font-medium">Competitors Mentioned: </span>
-                            {(qa.competitorsMentioned as string[]).join(", ")}
+                            {getStringArray(qa.competitorsMentioned).join(", ")}
                           </div>
                         )}
                       </div>

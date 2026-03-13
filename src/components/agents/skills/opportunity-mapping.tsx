@@ -13,7 +13,7 @@ export default function OpportunityMappingSkill() {
   const [customerPainPoints, setCustomerPainPoints] = useState("");
   const [constraints, setConstraints] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -48,10 +48,10 @@ export default function OpportunityMappingSkill() {
     setSaving(false);
   };
 
-  const prioritizedOpportunities = (output?.prioritizedOpportunities as Array<Record<string, unknown>>) || [];
-  const whiteSpaceOpportunities = (output?.whiteSpaceOpportunities as Array<Record<string, unknown>>) || [];
-  const threats = (output?.threats as Array<Record<string, unknown>>) || [];
-  const risks = (output?.risks as Array<Record<string, unknown>>) || [];
+  const prioritizedOpportunities = (output?.prioritizedOpportunities as Array<Record<string, any>>) || [];
+  const whiteSpaceOpportunities = (output?.whiteSpaceOpportunities as Array<Record<string, any>>) || [];
+  const threats = (output?.threats as Array<Record<string, any>>) || [];
+  const risks = (output?.risks as Array<Record<string, any>>) || [];
 
   const feasibilityColor = (f: string): "green" | "yellow" | "red" | "gray" => {
     if (f === "high") return "green";

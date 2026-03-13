@@ -25,7 +25,7 @@ export default function ArgumentStructuringSkill() {
   const [evidenceNotes, setEvidenceNotes] = useState("");
 
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -86,7 +86,7 @@ export default function ArgumentStructuringSkill() {
     }
   };
 
-  const o = output as Record<string, unknown> | null;
+  const o = output as Record<string, any> | null;
 
   return (
     <div>

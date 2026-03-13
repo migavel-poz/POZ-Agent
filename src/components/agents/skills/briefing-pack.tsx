@@ -13,7 +13,7 @@ export default function BriefingPackSkill() {
   const [keyData, setKeyData] = useState("");
   const [objective, setObjective] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<Record<string, unknown> | null>(null);
+  const [output, setOutput] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -47,10 +47,10 @@ export default function BriefingPackSkill() {
     setSaving(false);
   };
 
-  const keyFindings = (output?.keyFindings as Array<Record<string, unknown>>) || [];
-  const dataHighlights = (output?.dataHighlights as Array<Record<string, unknown>>) || [];
-  const options = (output?.options as Array<Record<string, unknown>>) || [];
-  const nextSteps = (output?.nextSteps as Array<Record<string, unknown>>) || [];
+  const keyFindings = (output?.keyFindings as Array<Record<string, any>>) || [];
+  const dataHighlights = (output?.dataHighlights as Array<Record<string, any>>) || [];
+  const options = (output?.options as Array<Record<string, any>>) || [];
+  const nextSteps = (output?.nextSteps as Array<Record<string, any>>) || [];
 
   const trendIndicator = (trend: string) => {
     if (trend === "up") return <span className="text-green-600 dark:text-green-400">&uarr;</span>;
