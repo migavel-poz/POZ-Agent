@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   if (searchParams.get("author_id")) filters.author_id = Number(searchParams.get("author_id"));
   if (searchParams.get("search")) filters.search = searchParams.get("search")!;
 
-  const posts = getAllPosts(filters);
+  const posts = await getAllPosts(filters);
   return NextResponse.json(posts);
 }
 
@@ -23,6 +23,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields: title, content, post_type, author_id" }, { status: 400 });
   }
 
-  const post = createPost({ title, content, post_type, author_id, platform, ai_prompt, ai_model, carousel_slides, hashtags, scheduled_date });
+  const post = await createPost({ title, content, post_type, author_id, platform, ai_prompt, ai_model, carousel_slides, hashtags, scheduled_date });
   return NextResponse.json(post, { status: 201 });
 }

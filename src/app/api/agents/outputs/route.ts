@@ -4,7 +4,7 @@ import { getAllOutputs, createOutput } from "@/lib/db/agent-outputs";
 export async function GET(request: NextRequest) {
   try {
     const params = request.nextUrl.searchParams;
-    const outputs = getAllOutputs({
+    const outputs = await getAllOutputs({
       agent_id: params.get("agent_id") || undefined,
       skill_id: params.get("skill_id") || undefined,
       status: params.get("status") || undefined,
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const output = createOutput({
+    const output = await createOutput({
       agent_id,
       skill_id,
       title,

@@ -1,35 +1,38 @@
-import { getDb } from "./index";
+import { getDb, withTransaction } from "./index";
 
-export function getSetting(key: string): string | undefined {
-  const db = getDb();
-  const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined;
-  return row?.value;
+export async function getSetting(key: string): Promise<string | undefined> {
+  const db = await getDb();
+  const row = await db.query<{ value: string }>("SELECT value FROM app_settings WHERE key = $1", [key]);
+  return row.rows[0]?.value;
 }
 
-export function getAllSettings(): Record<string, string> {
-  const db = getDb();
-  const rows = db.prepare("SELECT key, value FROM app_settings").all() as { key: string; value: string }[];
-  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+export async function getAllSettings(): Promise<Record<string, string>> {
+  const db = await getDb();
+  const rows = await db.query<{ key: string; value: string }>("SELECT key, value FROM app_settings");
+  return Object.fromEntries(rows.rows.map((r) => [r.key, r.value]));
 }
 
-export function setSetting(key: string, value: string): void {
-  const db = getDb();
-  db.prepare(`
-    INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
-  `).run(key, value);
+export async function setSetting(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  await db.query(
+    `
+      INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = NOW()
+    `,
+    [key, value]
+  );
 }
 
-export function setMultipleSettings(settings: Record<string, string>): void {
-  const db = getDb();
-  const stmt = db.prepare(`
-    INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
-  `);
-  const transaction = db.transaction(() => {
+export async function setMultipleSettings(settings: Record<string, string>): Promise<void> {
+  await withTransaction(async (client) => {
     for (const [key, value] of Object.entries(settings)) {
-      stmt.run(key, value);
+      await client.query(
+        `
+          INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = NOW()
+        `,
+        [key, value]
+      );
     }
   });
-  transaction();
 }

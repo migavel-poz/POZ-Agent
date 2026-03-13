@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAllTemplates, createTemplate } from "@/lib/db/templates";
 
 export async function GET() {
-  const templates = getAllTemplates();
+  const templates = await getAllTemplates();
   return NextResponse.json(templates);
 }
 
@@ -14,6 +14,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const template = createTemplate({ name, post_type, system_prompt, user_prompt_template, example_output, is_default, created_by });
+  const template = await createTemplate({ name, post_type, system_prompt, user_prompt_template, example_output, is_default, created_by });
   return NextResponse.json(template, { status: 201 });
 }

@@ -11,10 +11,10 @@ export async function GET(request: NextRequest) {
     const diff = now.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(now.setDate(diff));
     const weekStart = monday.toISOString().split("T")[0];
-    const posts = getPostsByWeek(weekStart);
+    const posts = await getPostsByWeek(weekStart);
     return NextResponse.json({ weekStart, posts });
   }
 
-  const posts = getPostsByWeek(week);
+  const posts = await getPostsByWeek(week);
   return NextResponse.json({ weekStart: week, posts });
 }

@@ -20,10 +20,15 @@ export interface GeneratedCarousel {
   hashtags: string[];
 }
 
-function buildPrompt(topic: string, postType: PostType, additionalContext?: string) {
-  const template = getDefaultTemplate(postType);
-  const brandName = getSetting("brand_name") || "POZ";
-  const brandVoice = getSetting("brand_voice") || "";
+async function buildPrompt(topic: string, postType: PostType, additionalContext?: string) {
+  const [template, brandNameSetting, brandVoiceSetting] = await Promise.all([
+    getDefaultTemplate(postType),
+    getSetting("brand_name"),
+    getSetting("brand_voice"),
+  ]);
+
+  const brandName = brandNameSetting || "POZ";
+  const brandVoice = brandVoiceSetting || "";
 
   let systemPrompt = template?.system_prompt || getDefaultSystemPrompt(postType);
   if (brandVoice) {
@@ -59,12 +64,12 @@ export async function generatePost(params: {
   postType: PostType;
   additionalContext?: string;
 }): Promise<GeneratedPost | GeneratedCarousel> {
-  const apiKey = process.env.OPENAI_API_KEY || getSetting("openai_api_key");
+  const apiKey = process.env.OPENAI_API_KEY || (await getSetting("openai_api_key"));
   if (!apiKey) throw new Error("OpenAI API key not configured");
 
-  const model = getSetting("default_model") || "gpt-4o";
+  const model = (await getSetting("default_model")) || "gpt-4o";
   const openai = new OpenAI({ apiKey });
-  const { systemPrompt, userPrompt } = buildPrompt(params.topic, params.postType, params.additionalContext);
+  const { systemPrompt, userPrompt } = await buildPrompt(params.topic, params.postType, params.additionalContext);
 
   if (params.postType === "carousel") {
     const response = await openai.chat.completions.create({

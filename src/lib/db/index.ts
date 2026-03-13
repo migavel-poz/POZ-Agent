@@ -1,22 +1,43 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { Pool, PoolClient } from "pg";
 import { initSchema } from "./schema";
 
-const DB_PATH = path.join(process.cwd(), "data", "social-media-agent.db");
+let db: Pool | null = null;
+let initPromise: Promise<void> | null = null;
 
-let db: Database.Database | null = null;
-
-export function getDb(): Database.Database {
-  if (!db) {
-    const fs = require("fs");
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
-    initSchema(db);
+function getConnectionString(): string {
+  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("Missing POSTGRES_URL or DATABASE_URL environment variable");
   }
+  return connectionString;
+}
+
+export async function getDb(): Promise<Pool> {
+  if (!db) {
+    db = new Pool({ connectionString: getConnectionString() });
+    initPromise = initSchema(db);
+  }
+
+  if (initPromise) {
+    await initPromise;
+  }
+
   return db;
+}
+
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const pool = await getDb();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }

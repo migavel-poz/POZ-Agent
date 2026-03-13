@@ -1,13 +1,18 @@
 import { getDb } from "./index";
 import { Post, PostRevision, PostStatusHistory, PostStatus, PostType } from "../types";
 
-export function getAllPosts(filters?: {
+function toNumber(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export async function getAllPosts(filters?: {
   status?: PostStatus;
   post_type?: PostType;
   author_id?: number;
   search?: string;
-}): Post[] {
-  const db = getDb();
+}): Promise<Post[]> {
+  const db = await getDb();
   let query = `
     SELECT p.*, tm.name as author_name, d.name as designer_name
     FROM posts p
@@ -18,38 +23,44 @@ export function getAllPosts(filters?: {
   const params: unknown[] = [];
 
   if (filters?.status) {
-    query += " AND p.status = ?";
     params.push(filters.status);
+    query += ` AND p.status = $${params.length}`;
   }
   if (filters?.post_type) {
-    query += " AND p.post_type = ?";
     params.push(filters.post_type);
+    query += ` AND p.post_type = $${params.length}`;
   }
   if (filters?.author_id) {
-    query += " AND p.author_id = ?";
     params.push(filters.author_id);
+    query += ` AND p.author_id = $${params.length}`;
   }
   if (filters?.search) {
-    query += " AND (p.title LIKE ? OR p.content LIKE ?)";
-    params.push(`%${filters.search}%`, `%${filters.search}%`);
+    const like = `%${filters.search}%`;
+    params.push(like);
+    const titleParam = params.length;
+    params.push(like);
+    const contentParam = params.length;
+    query += ` AND (p.title ILIKE $${titleParam} OR p.content ILIKE $${contentParam})`;
   }
 
   query += " ORDER BY p.updated_at DESC";
-  return db.prepare(query).all(...params) as Post[];
+  const result = await db.query<Post>(query, params);
+  return result.rows;
 }
 
-export function getPostById(id: number): Post | undefined {
-  const db = getDb();
-  return db.prepare(`
+export async function getPostById(id: number): Promise<Post | undefined> {
+  const db = await getDb();
+  const result = await db.query<Post>(`
     SELECT p.*, tm.name as author_name, d.name as designer_name
     FROM posts p
     JOIN team_members tm ON p.author_id = tm.id
     LEFT JOIN team_members d ON p.assigned_designer_id = d.id
-    WHERE p.id = ?
-  `).get(id) as Post | undefined;
+    WHERE p.id = $1
+  `, [id]);
+  return result.rows[0];
 }
 
-export function createPost(data: {
+export async function createPost(data: {
   title: string;
   content: string;
   post_type: PostType;
@@ -60,12 +71,13 @@ export function createPost(data: {
   carousel_slides?: string;
   hashtags?: string;
   scheduled_date?: string;
-}): Post {
-  const db = getDb();
-  const result = db.prepare(`
+}): Promise<Post> {
+  const db = await getDb();
+  const result = await db.query<{ id: number }>(`
     INSERT INTO posts (title, content, post_type, author_id, platform, ai_prompt, ai_model, carousel_slides, hashtags, scheduled_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING id
+  `, [
     data.title,
     data.content,
     data.post_type,
@@ -75,25 +87,25 @@ export function createPost(data: {
     data.ai_model || null,
     data.carousel_slides || null,
     data.hashtags || null,
-    data.scheduled_date || null
-  );
+    data.scheduled_date || null,
+  ]);
 
-  // Log initial status
-  db.prepare(`
+  const postId = result.rows[0].id;
+
+  await db.query(`
     INSERT INTO post_status_history (post_id, from_status, to_status, changed_by)
-    VALUES (?, NULL, 'draft', ?)
-  `).run(result.lastInsertRowid, data.author_id);
+    VALUES ($1, NULL, 'draft', $2)
+  `, [postId, data.author_id]);
 
-  // Save first revision
-  db.prepare(`
+  await db.query(`
     INSERT INTO post_revisions (post_id, content, revised_by, revision_type)
-    VALUES (?, ?, ?, 'ai_generated')
-  `).run(result.lastInsertRowid, data.content, data.author_id);
+    VALUES ($1, $2, $3, 'ai_generated')
+  `, [postId, data.content, data.author_id]);
 
-  return getPostById(Number(result.lastInsertRowid))!;
+  return (await getPostById(postId))!;
 }
 
-export function updatePost(id: number, data: Partial<{
+export async function updatePost(id: number, data: Partial<{
   title: string;
   content: string;
   scheduled_date: string | null;
@@ -102,152 +114,166 @@ export function updatePost(id: number, data: Partial<{
   notes: string | null;
   published_url: string | null;
   carousel_slides: string | null;
-}>): Post | undefined {
-  const db = getDb();
+}>): Promise<Post | undefined> {
+  const db = await getDb();
   const fields: string[] = [];
   const values: unknown[] = [];
 
   for (const [key, value] of Object.entries(data)) {
     if (value !== undefined) {
-      fields.push(`${key} = ?`);
       values.push(value);
+      fields.push(`${key} = $${values.length}`);
     }
   }
 
   if (fields.length === 0) return getPostById(id);
 
-  fields.push("updated_at = datetime('now')");
+  fields.push("updated_at = NOW()");
   values.push(id);
 
-  db.prepare(`UPDATE posts SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  await db.query(`UPDATE posts SET ${fields.join(", ")} WHERE id = $${values.length}`, values);
   return getPostById(id);
 }
 
-export function deletePost(id: number): boolean {
-  const db = getDb();
-  const result = db.prepare("DELETE FROM posts WHERE id = ?").run(id);
-  return result.changes > 0;
+export async function deletePost(id: number): Promise<boolean> {
+  const db = await getDb();
+  const result = await db.query("DELETE FROM posts WHERE id = $1", [id]);
+  return (result.rowCount || 0) > 0;
 }
 
-export function transitionPostStatus(
+export async function transitionPostStatus(
   id: number,
   newStatus: PostStatus,
   changedBy: number,
   note?: string
-): Post | undefined {
-  const db = getDb();
-  const post = getPostById(id);
+): Promise<Post | undefined> {
+  const db = await getDb();
+  const post = await getPostById(id);
   if (!post) return undefined;
 
-  db.prepare("UPDATE posts SET status = ?, updated_at = datetime('now') WHERE id = ?").run(newStatus, id);
+  await db.query("UPDATE posts SET status = $1, updated_at = NOW() WHERE id = $2", [newStatus, id]);
 
-  db.prepare(`
+  await db.query(`
     INSERT INTO post_status_history (post_id, from_status, to_status, changed_by, note)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, post.status, newStatus, changedBy, note || null);
+    VALUES ($1, $2, $3, $4, $5)
+  `, [id, post.status, newStatus, changedBy, note || null]);
 
   return getPostById(id);
 }
 
-export function addRevision(postId: number, content: string, revisedBy: number, type: string): PostRevision {
-  const db = getDb();
-  const result = db.prepare(`
+export async function addRevision(postId: number, content: string, revisedBy: number, type: string): Promise<PostRevision> {
+  const db = await getDb();
+  const result = await db.query<PostRevision>(`
     INSERT INTO post_revisions (post_id, content, revised_by, revision_type)
-    VALUES (?, ?, ?, ?)
-  `).run(postId, content, revisedBy, type);
-  return db.prepare("SELECT * FROM post_revisions WHERE id = ?").get(result.lastInsertRowid) as PostRevision;
+    VALUES ($1, $2, $3, $4)
+    RETURNING *
+  `, [postId, content, revisedBy, type]);
+  return result.rows[0];
 }
 
-export function getRevisions(postId: number): PostRevision[] {
-  const db = getDb();
-  return db.prepare(`
+export async function getRevisions(postId: number): Promise<PostRevision[]> {
+  const db = await getDb();
+  const result = await db.query<PostRevision>(`
     SELECT pr.*, tm.name as revised_by_name
     FROM post_revisions pr
     JOIN team_members tm ON pr.revised_by = tm.id
-    WHERE pr.post_id = ?
+    WHERE pr.post_id = $1
     ORDER BY pr.created_at DESC
-  `).all(postId) as PostRevision[];
+  `, [postId]);
+  return result.rows;
 }
 
-export function getStatusHistory(postId: number): PostStatusHistory[] {
-  const db = getDb();
-  return db.prepare(`
+export async function getStatusHistory(postId: number): Promise<PostStatusHistory[]> {
+  const db = await getDb();
+  const result = await db.query<PostStatusHistory>(`
     SELECT psh.*, tm.name as changed_by_name
     FROM post_status_history psh
     JOIN team_members tm ON psh.changed_by = tm.id
-    WHERE psh.post_id = ?
+    WHERE psh.post_id = $1
     ORDER BY psh.created_at DESC
-  `).all(postId) as PostStatusHistory[];
+  `, [postId]);
+  return result.rows;
 }
 
-export function getPostsByWeek(weekStart: string): Post[] {
-  const db = getDb();
-  return db.prepare(`
+export async function getPostsByWeek(weekStart: string): Promise<Post[]> {
+  const db = await getDb();
+  const result = await db.query<Post>(`
     SELECT p.*, tm.name as author_name, d.name as designer_name
     FROM posts p
     JOIN team_members tm ON p.author_id = tm.id
     LEFT JOIN team_members d ON p.assigned_designer_id = d.id
-    WHERE p.scheduled_date >= ? AND p.scheduled_date < date(?, '+7 days')
+    WHERE p.scheduled_date >= $1::date AND p.scheduled_date < ($1::date + INTERVAL '7 days')
     ORDER BY p.scheduled_date ASC
-  `).all(weekStart, weekStart) as Post[];
+  `, [weekStart]);
+  return result.rows;
 }
 
-export function getDashboardStats() {
-  const db = getDb();
+export async function getDashboardStats() {
+  const db = await getDb();
 
-  const totalPosts = (db.prepare("SELECT COUNT(*) as count FROM posts").get() as { count: number }).count;
+  const totalPostsResult = await db.query<{ count: number }>("SELECT COUNT(*)::int as count FROM posts");
+  const totalPosts = toNumber(totalPostsResult.rows[0]?.count);
 
   const now = new Date();
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - now.getDay() + 1);
   const weekStartStr = weekStart.toISOString().split("T")[0];
-  const postsThisWeek = (db.prepare(
-    "SELECT COUNT(*) as count FROM posts WHERE created_at >= ?"
-  ).get(weekStartStr) as { count: number }).count;
+  const postsThisWeekResult = await db.query<{ count: number }>(
+    "SELECT COUNT(*)::int as count FROM posts WHERE created_at >= $1",
+    [weekStartStr]
+  );
+  const postsThisWeek = toNumber(postsThisWeekResult.rows[0]?.count);
 
-  const inPipeline = (db.prepare(
-    "SELECT COUNT(*) as count FROM posts WHERE status NOT IN ('draft', 'published')"
-  ).get() as { count: number }).count;
+  const inPipelineResult = await db.query<{ count: number }>(
+    "SELECT COUNT(*)::int as count FROM posts WHERE status NOT IN ('draft', 'published')"
+  );
+  const inPipeline = toNumber(inPipelineResult.rows[0]?.count);
 
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const publishedThisMonth = (db.prepare(
-    "SELECT COUNT(*) as count FROM posts WHERE status = 'published' AND updated_at >= ?"
-  ).get(monthStart) as { count: number }).count;
+  const publishedThisMonthResult = await db.query<{ count: number }>(
+    "SELECT COUNT(*)::int as count FROM posts WHERE status = 'published' AND updated_at >= $1",
+    [monthStart]
+  );
+  const publishedThisMonth = toNumber(publishedThisMonthResult.rows[0]?.count);
 
-  const statusCounts = db.prepare(
-    "SELECT status, COUNT(*) as count FROM posts GROUP BY status"
-  ).all() as { status: string; count: number }[];
+  const statusCountsResult = await db.query<{ status: string; count: number }>(
+    "SELECT status, COUNT(*)::int as count FROM posts GROUP BY status"
+  );
 
-  const typeCounts = db.prepare(
-    "SELECT post_type, COUNT(*) as count FROM posts GROUP BY post_type"
-  ).all() as { post_type: string; count: number }[];
+  const typeCountsResult = await db.query<{ post_type: string; count: number }>(
+    "SELECT post_type, COUNT(*)::int as count FROM posts GROUP BY post_type"
+  );
 
-  const teamContributions = db.prepare(`
+  const teamContributionsResult = await db.query<{ name: string; posts_created: number; posts_published: number }>(`
     SELECT tm.name,
-      COUNT(CASE WHEN p.id IS NOT NULL THEN 1 END) as posts_created,
-      COUNT(CASE WHEN p.status = 'published' THEN 1 END) as posts_published
+      COUNT(p.id)::int as posts_created,
+      COUNT(CASE WHEN p.status = 'published' THEN 1 END)::int as posts_published
     FROM team_members tm
     LEFT JOIN posts p ON p.author_id = tm.id
     GROUP BY tm.id
     ORDER BY posts_created DESC
-  `).all() as { name: string; posts_created: number; posts_published: number }[];
+  `);
 
-  const recentActivity = db.prepare(`
+  const recentActivityResult = await db.query<PostStatusHistory>(`
     SELECT psh.*, tm.name as changed_by_name
     FROM post_status_history psh
     JOIN team_members tm ON psh.changed_by = tm.id
     ORDER BY psh.created_at DESC
     LIMIT 10
-  `).all() as PostStatusHistory[];
+  `);
 
   return {
     totalPosts,
     postsThisWeek,
     inPipeline,
     publishedThisMonth,
-    postsByStatus: Object.fromEntries(statusCounts.map((s) => [s.status, s.count])),
-    postsByType: Object.fromEntries(typeCounts.map((t) => [t.post_type, t.count])),
-    teamContributions,
-    recentActivity,
+    postsByStatus: Object.fromEntries(statusCountsResult.rows.map((s) => [s.status, toNumber(s.count)])),
+    postsByType: Object.fromEntries(typeCountsResult.rows.map((t) => [t.post_type, toNumber(t.count)])),
+    teamContributions: teamContributionsResult.rows.map((item) => ({
+      name: item.name,
+      posts_created: toNumber(item.posts_created),
+      posts_published: toNumber(item.posts_published),
+    })),
+    recentActivity: recentActivityResult.rows,
   };
 }

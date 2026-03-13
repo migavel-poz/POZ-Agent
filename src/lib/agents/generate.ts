@@ -448,17 +448,24 @@ export async function generateSkillOutput(params: {
   skillId: SkillId;
   inputs: Record<string, unknown>;
 }): Promise<Record<string, unknown>> {
-  const apiKey = process.env.OPENAI_API_KEY || getSetting("openai_api_key");
+  const [storedApiKey, defaultModelSetting, brandNameSetting, brandVoiceSetting] = await Promise.all([
+    getSetting("openai_api_key"),
+    getSetting("default_model"),
+    getSetting("brand_name"),
+    getSetting("brand_voice"),
+  ]);
+
+  const apiKey = process.env.OPENAI_API_KEY || storedApiKey;
   if (!apiKey) throw new Error("OpenAI API key not configured");
 
-  const model = getSetting("default_model") || "gpt-4o";
+  const model = defaultModelSetting || "gpt-4o";
   const openai = new OpenAI({ apiKey });
 
   const promptConfig = SKILL_PROMPTS[params.skillId];
   if (!promptConfig) throw new Error(`Unknown skill: ${params.skillId}`);
 
-  const brandName = getSetting("brand_name") || "POZ";
-  const brandVoice = getSetting("brand_voice") || "";
+  const brandName = brandNameSetting || "POZ";
+  const brandVoice = brandVoiceSetting || "";
 
   let systemPrompt = promptConfig.systemPrompt;
   if (brandVoice) {

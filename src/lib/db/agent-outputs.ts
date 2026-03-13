@@ -1,14 +1,14 @@
 import { getDb } from "./index";
 import { AgentOutput } from "../agents/types";
 
-export function getAllOutputs(filters?: {
+export async function getAllOutputs(filters?: {
   agent_id?: string;
   skill_id?: string;
   status?: string;
   created_by?: number;
   search?: string;
-}): AgentOutput[] {
-  const db = getDb();
+}): Promise<AgentOutput[]> {
+  const db = await getDb();
   let query = `
     SELECT ao.*, tm.name as created_by_name
     FROM agent_outputs ao
@@ -18,104 +18,99 @@ export function getAllOutputs(filters?: {
   const params: unknown[] = [];
 
   if (filters?.agent_id) {
-    query += " AND ao.agent_id = ?";
     params.push(filters.agent_id);
+    query += ` AND ao.agent_id = $${params.length}`;
   }
   if (filters?.skill_id) {
-    query += " AND ao.skill_id = ?";
     params.push(filters.skill_id);
+    query += ` AND ao.skill_id = $${params.length}`;
   }
   if (filters?.status) {
-    query += " AND ao.status = ?";
     params.push(filters.status);
+    query += ` AND ao.status = $${params.length}`;
   }
   if (filters?.created_by) {
-    query += " AND ao.created_by = ?";
     params.push(filters.created_by);
+    query += ` AND ao.created_by = $${params.length}`;
   }
   if (filters?.search) {
-    query += " AND (ao.title LIKE ? OR ao.output_json LIKE ?)";
-    params.push(`%${filters.search}%`, `%${filters.search}%`);
+    const like = `%${filters.search}%`;
+    params.push(like);
+    const titleParam = params.length;
+    params.push(like);
+    const jsonParam = params.length;
+    query += ` AND (ao.title ILIKE $${titleParam} OR ao.output_json ILIKE $${jsonParam})`;
   }
 
   query += " ORDER BY ao.created_at DESC";
-
-  return db.prepare(query).all(...params) as AgentOutput[];
+  const result = await db.query<AgentOutput>(query, params);
+  return result.rows;
 }
 
-export function getOutputById(id: number): AgentOutput | undefined {
-  const db = getDb();
-  return db
-    .prepare(
-      `SELECT ao.*, tm.name as created_by_name
-       FROM agent_outputs ao
-       LEFT JOIN team_members tm ON ao.created_by = tm.id
-       WHERE ao.id = ?`
-    )
-    .get(id) as AgentOutput | undefined;
+export async function getOutputById(id: number): Promise<AgentOutput | undefined> {
+  const db = await getDb();
+  const result = await db.query<AgentOutput>(
+    `SELECT ao.*, tm.name as created_by_name
+     FROM agent_outputs ao
+     LEFT JOIN team_members tm ON ao.created_by = tm.id
+     WHERE ao.id = $1`,
+    [id]
+  );
+  return result.rows[0];
 }
 
-export function createOutput(data: {
+export async function createOutput(data: {
   agent_id: string;
   skill_id: string;
   title: string;
   input_params: string;
   output_json: string;
   created_by: number;
-}): AgentOutput {
-  const db = getDb();
-  const result = db
-    .prepare(
-      `INSERT INTO agent_outputs (agent_id, skill_id, title, input_params, output_json, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      data.agent_id,
-      data.skill_id,
-      data.title,
-      data.input_params,
-      data.output_json,
-      data.created_by
-    );
+}): Promise<AgentOutput> {
+  const db = await getDb();
+  const result = await db.query<{ id: number }>(
+    `INSERT INTO agent_outputs (agent_id, skill_id, title, input_params, output_json, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [data.agent_id, data.skill_id, data.title, data.input_params, data.output_json, data.created_by]
+  );
 
-  return getOutputById(Number(result.lastInsertRowid))!;
+  return (await getOutputById(result.rows[0].id))!;
 }
 
-export function updateOutput(
+export async function updateOutput(
   id: number,
   data: Partial<{ title: string; output_json: string; status: string }>
-): AgentOutput | undefined {
-  const db = getDb();
+): Promise<AgentOutput | undefined> {
+  const db = await getDb();
   const fields: string[] = [];
   const params: unknown[] = [];
 
   if (data.title !== undefined) {
-    fields.push("title = ?");
     params.push(data.title);
+    fields.push(`title = $${params.length}`);
   }
   if (data.output_json !== undefined) {
-    fields.push("output_json = ?");
     params.push(data.output_json);
+    fields.push(`output_json = $${params.length}`);
   }
   if (data.status !== undefined) {
-    fields.push("status = ?");
     params.push(data.status);
+    fields.push(`status = $${params.length}`);
   }
 
   if (fields.length === 0) return getOutputById(id);
 
-  fields.push("updated_at = datetime('now')");
+  fields.push("updated_at = NOW()");
   params.push(id);
 
-  db.prepare(`UPDATE agent_outputs SET ${fields.join(", ")} WHERE id = ?`).run(
-    ...params
-  );
+  await db.query(`UPDATE agent_outputs SET ${fields.join(", ")} WHERE id = $${params.length}`, params);
 
   return getOutputById(id);
 }
 
-export function deleteOutput(id: number): boolean {
-  const db = getDb();
-  const result = db.prepare("DELETE FROM agent_outputs WHERE id = ?").run(id);
-  return result.changes > 0;
+export async function deleteOutput(id: number): Promise<boolean> {
+  const db = await getDb();
+  const result = await db.query("DELETE FROM agent_outputs WHERE id = $1", [id]);
+  return (result.rowCount || 0) > 0;
 }

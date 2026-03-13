@@ -12,7 +12,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Missing required fields: status, changed_by" }, { status: 400 });
   }
 
-  const post = getPostById(Number(id));
+  const post = await getPostById(Number(id));
   if (!post) return NextResponse.json({ error: "Post not found" }, { status: 404 });
 
   if (!canTransition(post.status, newStatus as PostStatus)) {
@@ -22,6 +22,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
   }
 
-  const updated = transitionPostStatus(Number(id), newStatus as PostStatus, changed_by, note);
+  const updated = await transitionPostStatus(Number(id), newStatus as PostStatus, changed_by, note);
   return NextResponse.json(updated);
 }

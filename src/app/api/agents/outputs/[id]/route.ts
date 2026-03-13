@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const output = getOutputById(Number(id));
+    const output = await getOutputById(Number(id));
     if (!output) {
       return NextResponse.json({ error: "Output not found" }, { status: 404 });
     }
@@ -25,7 +25,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const output = updateOutput(Number(id), body);
+    const output = await updateOutput(Number(id), body);
     if (!output) {
       return NextResponse.json({ error: "Output not found" }, { status: 404 });
     }
@@ -42,7 +42,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const deleted = deleteOutput(Number(id));
+    const deleted = await deleteOutput(Number(id));
     if (!deleted) {
       return NextResponse.json({ error: "Output not found" }, { status: 404 });
     }

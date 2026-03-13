@@ -1,44 +1,51 @@
 import { getDb } from "./index";
 import { TeamMember } from "../types";
 
-export function getAllTeamMembers(): TeamMember[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM team_members ORDER BY name ASC").all() as TeamMember[];
+export async function getAllTeamMembers(): Promise<TeamMember[]> {
+  const db = await getDb();
+  const result = await db.query<TeamMember>("SELECT * FROM team_members ORDER BY name ASC");
+  return result.rows;
 }
 
-export function getTeamMemberById(id: number): TeamMember | undefined {
-  const db = getDb();
-  return db.prepare("SELECT * FROM team_members WHERE id = ?").get(id) as TeamMember | undefined;
+export async function getTeamMemberById(id: number): Promise<TeamMember | undefined> {
+  const db = await getDb();
+  const result = await db.query<TeamMember>("SELECT * FROM team_members WHERE id = $1", [id]);
+  return result.rows[0];
 }
 
-export function createTeamMember(data: { name: string; email?: string; role?: string }): TeamMember {
-  const db = getDb();
-  const result = db.prepare(
-    "INSERT INTO team_members (name, email, role) VALUES (?, ?, ?)"
-  ).run(data.name, data.email || null, data.role || "member");
-  return getTeamMemberById(Number(result.lastInsertRowid))!;
+export async function createTeamMember(data: { name: string; email?: string; role?: string }): Promise<TeamMember> {
+  const db = await getDb();
+  const result = await db.query<{ id: number }>(
+    "INSERT INTO team_members (name, email, role) VALUES ($1, $2, $3) RETURNING id",
+    [data.name, data.email || null, data.role || "member"]
+  );
+  return (await getTeamMemberById(result.rows[0].id))!;
 }
 
-export function updateTeamMember(id: number, data: Partial<{ name: string; email: string; role: string }>): TeamMember | undefined {
-  const db = getDb();
+export async function updateTeamMember(
+  id: number,
+  data: Partial<{ name: string; email: string; role: string }>
+): Promise<TeamMember | undefined> {
+  const db = await getDb();
   const fields: string[] = [];
   const values: unknown[] = [];
 
   for (const [key, value] of Object.entries(data)) {
     if (value !== undefined) {
-      fields.push(`${key} = ?`);
       values.push(value);
+      fields.push(`${key} = $${values.length}`);
     }
   }
 
   if (fields.length === 0) return getTeamMemberById(id);
+
   values.push(id);
-  db.prepare(`UPDATE team_members SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  await db.query(`UPDATE team_members SET ${fields.join(", ")} WHERE id = $${values.length}`, values);
   return getTeamMemberById(id);
 }
 
-export function deleteTeamMember(id: number): boolean {
-  const db = getDb();
-  const result = db.prepare("DELETE FROM team_members WHERE id = ?").run(id);
-  return result.changes > 0;
+export async function deleteTeamMember(id: number): Promise<boolean> {
+  const db = await getDb();
+  const result = await db.query("DELETE FROM team_members WHERE id = $1", [id]);
+  return (result.rowCount || 0) > 0;
 }
