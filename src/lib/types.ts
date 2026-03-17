@@ -2,9 +2,11 @@ export type PostType = "problem_solution" | "educational" | "execution" | "carou
 
 export type PostStatus =
   | "draft"
-  | "in_review"
-  | "ready_for_design"
-  | "with_designer"
+  | "submitted"
+  | "under_review"
+  | "changes_requested"
+  | "approved_for_design"
+  | "design_in_progress"
   | "ready_to_publish"
   | "published";
 

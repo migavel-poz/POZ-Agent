@@ -16,58 +16,71 @@ export const POST_TYPE_DESCRIPTIONS: Record<PostType, string> = {
 
 export const POST_STATUS_LABELS: Record<PostStatus, string> = {
   draft: "Draft",
-  in_review: "In Review",
-  ready_for_design: "Ready for Design",
-  with_designer: "With Designer",
+  submitted: "Submitted",
+  under_review: "Under Review",
+  changes_requested: "Changes Requested",
+  approved_for_design: "Approved for Design",
+  design_in_progress: "Design in Progress",
   ready_to_publish: "Ready to Publish",
   published: "Published",
 };
 
 export const POST_STATUS_COLORS: Record<PostStatus, string> = {
   draft: "bg-gray-100 text-gray-700",
-  in_review: "bg-yellow-100 text-yellow-700",
-  ready_for_design: "bg-blue-100 text-blue-700",
-  with_designer: "bg-purple-100 text-purple-700",
+  submitted: "bg-yellow-100 text-yellow-700",
+  under_review: "bg-orange-100 text-orange-700",
+  changes_requested: "bg-red-100 text-red-700",
+  approved_for_design: "bg-blue-100 text-blue-700",
+  design_in_progress: "bg-purple-100 text-purple-700",
   ready_to_publish: "bg-emerald-100 text-emerald-700",
   published: "bg-green-100 text-green-700",
 };
 
 export const VALID_TRANSITIONS: Record<PostStatus, PostStatus[]> = {
-  draft: ["in_review"],
-  in_review: ["draft", "ready_for_design"],
-  ready_for_design: ["in_review", "with_designer"],
-  with_designer: ["ready_for_design", "ready_to_publish"],
-  ready_to_publish: ["with_designer", "published"],
+  draft: ["submitted"],
+  submitted: ["under_review", "changes_requested"],
+  under_review: ["changes_requested", "approved_for_design"],
+  changes_requested: ["submitted"],
+  approved_for_design: ["design_in_progress", "under_review"],
+  design_in_progress: ["ready_to_publish", "approved_for_design"],
+  ready_to_publish: ["published", "design_in_progress"],
   published: [],
 };
 
 // Which roles can perform each transition
 export const TRANSITION_ROLES: Record<string, AuthRole[]> = {
   // Employee submits their draft for review
-  "draft->in_review": ["employee", "admin", "superadmin"],
-  // Reviewer sends back to draft (request changes)
-  "in_review->draft": ["admin", "superadmin"],
+  "draft->submitted": ["employee", "admin", "superadmin"],
+  // Reviewer picks up submitted post to actively review
+  "submitted->under_review": ["admin", "superadmin"],
+  // Reviewer requests changes (from submitted or under_review)
+  "submitted->changes_requested": ["admin", "superadmin"],
+  "under_review->changes_requested": ["admin", "superadmin"],
   // Reviewer approves for design
-  "in_review->ready_for_design": ["admin", "superadmin"],
-  // Reviewer sends back to review
-  "ready_for_design->in_review": ["admin", "superadmin"],
-  // Designer picks up / reviewer assigns to designer
-  "ready_for_design->with_designer": ["admin", "designer", "superadmin"],
-  // Designer sends back (needs more review)
-  "with_designer->ready_for_design": ["designer", "admin", "superadmin"],
+  "under_review->approved_for_design": ["admin", "superadmin"],
+  // Employee resubmits after changes
+  "changes_requested->submitted": ["employee", "admin", "superadmin"],
+  // Reviewer sends back from approved_for_design to under_review
+  "approved_for_design->under_review": ["admin", "superadmin"],
+  // Designer picks up for design work
+  "approved_for_design->design_in_progress": ["designer", "admin", "superadmin"],
+  // Designer sends back
+  "design_in_progress->approved_for_design": ["designer", "admin", "superadmin"],
   // Designer marks design complete
-  "with_designer->ready_to_publish": ["designer", "superadmin"],
+  "design_in_progress->ready_to_publish": ["designer", "superadmin"],
   // Reviewer sends back to designer
-  "ready_to_publish->with_designer": ["admin", "superadmin"],
-  // Reviewer publishes
+  "ready_to_publish->design_in_progress": ["admin", "superadmin"],
+  // Reviewer/Admin publishes
   "ready_to_publish->published": ["admin", "superadmin"],
 };
 
 export const ALL_STATUSES: PostStatus[] = [
   "draft",
-  "in_review",
-  "ready_for_design",
-  "with_designer",
+  "submitted",
+  "under_review",
+  "changes_requested",
+  "approved_for_design",
+  "design_in_progress",
   "ready_to_publish",
   "published",
 ];

@@ -213,8 +213,34 @@ SELECT * FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM app_settings);
 
 -- =====================================================
+-- RBAC WORKFLOW MIGRATION
+-- Rename old status values to new role-based workflow statuses
+-- =====================================================
+
+-- Rename old statuses to new workflow statuses
+UPDATE posts SET status = 'submitted'          WHERE status = 'in_review';
+UPDATE posts SET status = 'approved_for_design' WHERE status = 'ready_for_design';
+UPDATE posts SET status = 'design_in_progress'  WHERE status = 'with_designer';
+
+-- Update status history audit trail to match new names
+UPDATE post_status_history SET from_status = 'submitted'           WHERE from_status = 'in_review';
+UPDATE post_status_history SET from_status = 'approved_for_design'  WHERE from_status = 'ready_for_design';
+UPDATE post_status_history SET from_status = 'design_in_progress'   WHERE from_status = 'with_designer';
+UPDATE post_status_history SET to_status   = 'submitted'           WHERE to_status   = 'in_review';
+UPDATE post_status_history SET to_status   = 'approved_for_design'  WHERE to_status   = 'ready_for_design';
+UPDATE post_status_history SET to_status   = 'design_in_progress'   WHERE to_status   = 'with_designer';
+
+-- Update designer seed users to have auth_role = 'designer'
+UPDATE team_members
+SET auth_role = 'designer'
+WHERE email IN ('rucha@poz.ai', 'karishma@poz.ai');
+
+-- =====================================================
 -- VERIFICATION QUERY
 -- =====================================================
 
 -- Show current team members with their roles
 -- SELECT name, email, role, auth_role, (password_hash IS NOT NULL) as has_password FROM team_members ORDER BY name;
+
+-- Show posts with new statuses
+-- SELECT id, title, status FROM posts ORDER BY created_at DESC LIMIT 20;
