@@ -1,34 +1,58 @@
 import { getDb } from "./index";
 import { PromptTemplate, PostType } from "../types";
 
+const SELECT_COLS =
+  "id, name, post_type, system_prompt, user_prompt_template, example_output, is_default, created_by, created_at, updated_at";
+
 export async function getAllTemplates(): Promise<PromptTemplate[]> {
-  const db = await getDb();
-  const result = await db.query<PromptTemplate>("SELECT * FROM prompt_templates ORDER BY post_type, name");
-  return result.rows;
+  const db = getDb();
+  const { data, error } = await db
+    .from("prompt_templates")
+    .select(SELECT_COLS)
+    .order("post_type", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(`Failed to fetch templates: ${error.message}`);
+  return (data || []) as PromptTemplate[];
 }
 
 export async function getTemplatesByType(postType: PostType): Promise<PromptTemplate[]> {
-  const db = await getDb();
-  const result = await db.query<PromptTemplate>(
-    "SELECT * FROM prompt_templates WHERE post_type = $1 ORDER BY is_default DESC, name",
-    [postType]
-  );
-  return result.rows;
+  const db = getDb();
+  const { data, error } = await db
+    .from("prompt_templates")
+    .select(SELECT_COLS)
+    .eq("post_type", postType)
+    .order("is_default", { ascending: false })
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(`Failed to fetch templates by type: ${error.message}`);
+  return (data || []) as PromptTemplate[];
 }
 
 export async function getDefaultTemplate(postType: PostType): Promise<PromptTemplate | undefined> {
-  const db = await getDb();
-  const result = await db.query<PromptTemplate>(
-    "SELECT * FROM prompt_templates WHERE post_type = $1 AND is_default = 1",
-    [postType]
-  );
-  return result.rows[0];
+  const db = getDb();
+  const { data, error } = await db
+    .from("prompt_templates")
+    .select(SELECT_COLS)
+    .eq("post_type", postType)
+    .eq("is_default", 1)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch default template: ${error.message}`);
+  return data as PromptTemplate | undefined;
 }
 
 export async function getTemplateById(id: number): Promise<PromptTemplate | undefined> {
-  const db = await getDb();
-  const result = await db.query<PromptTemplate>("SELECT * FROM prompt_templates WHERE id = $1", [id]);
-  return result.rows[0];
+  const db = getDb();
+  const { data, error } = await db
+    .from("prompt_templates")
+    .select(SELECT_COLS)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch template: ${error.message}`);
+  return data as PromptTemplate | undefined;
 }
 
 export async function createTemplate(data: {
@@ -40,21 +64,23 @@ export async function createTemplate(data: {
   is_default?: boolean;
   created_by?: number;
 }): Promise<PromptTemplate> {
-  const db = await getDb();
-  const result = await db.query<{ id: number }>(`
-    INSERT INTO prompt_templates (name, post_type, system_prompt, user_prompt_template, example_output, is_default, created_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-    RETURNING id
-  `, [
-    data.name,
-    data.post_type,
-    data.system_prompt,
-    data.user_prompt_template,
-    data.example_output || null,
-    data.is_default ? 1 : 0,
-    data.created_by || null,
-  ]);
-  return (await getTemplateById(result.rows[0].id))!;
+  const db = getDb();
+  const { data: created, error } = await db
+    .from("prompt_templates")
+    .insert({
+      name: data.name,
+      post_type: data.post_type,
+      system_prompt: data.system_prompt,
+      user_prompt_template: data.user_prompt_template,
+      example_output: data.example_output || null,
+      is_default: data.is_default ? 1 : 0,
+      created_by: data.created_by || null,
+    })
+    .select(SELECT_COLS)
+    .single();
+
+  if (error) throw new Error(`Failed to create template: ${error.message}`);
+  return created as PromptTemplate;
 }
 
 export async function updateTemplate(id: number, data: Partial<{
@@ -64,31 +90,30 @@ export async function updateTemplate(id: number, data: Partial<{
   example_output: string;
   is_default: boolean;
 }>): Promise<PromptTemplate | undefined> {
-  const db = await getDb();
-  const fields: string[] = [];
-  const values: unknown[] = [];
+  const db = getDb();
+  const payload = Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined).map(([key, value]) => {
+      if (key === "is_default") return [key, value ? 1 : 0];
+      return [key, value];
+    })
+  );
 
-  for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
-      if (key === "is_default") {
-        values.push(value ? 1 : 0);
-        fields.push(`${key} = $${values.length}`);
-      } else {
-        values.push(value);
-        fields.push(`${key} = $${values.length}`);
-      }
-    }
-  }
+  if (Object.keys(payload).length === 0) return getTemplateById(id);
 
-  if (fields.length === 0) return getTemplateById(id);
-  fields.push("updated_at = NOW()");
-  values.push(id);
-  await db.query(`UPDATE prompt_templates SET ${fields.join(", ")} WHERE id = $${values.length}`, values);
-  return getTemplateById(id);
+  const { data: updated, error } = await db
+    .from("prompt_templates")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select(SELECT_COLS)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to update template: ${error.message}`);
+  return updated as PromptTemplate | undefined;
 }
 
 export async function deleteTemplate(id: number): Promise<boolean> {
-  const db = await getDb();
-  const result = await db.query("DELETE FROM prompt_templates WHERE id = $1", [id]);
-  return (result.rowCount || 0) > 0;
+  const db = getDb();
+  const { data, error } = await db.from("prompt_templates").delete().eq("id", id).select("id");
+  if (error) throw new Error(`Failed to delete template: ${error.message}`);
+  return (data?.length || 0) > 0;
 }

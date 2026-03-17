@@ -20,7 +20,8 @@ import { toast } from "sonner";
 export default function PostDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { currentUser, teamMembers } = useUser();
+  const { currentUser } = useUser();
+  const [teamMembers, setLocalTeamMembers] = useState<TeamMember[]>([]);
   const [post, setPost] = useState<Post | null>(null);
   const [revisions, setRevisions] = useState<PostRevision[]>([]);
   const [statusHistory, setStatusHistory] = useState<PostStatusHistory[]>([]);
@@ -37,6 +38,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ id: strin
     fetchPost();
     fetchRevisions();
     fetchStatusHistory();
+    fetch('/api/team').then(r => r.json()).then((ms: TeamMember[]) => setLocalTeamMembers(ms));
   }, [id]);
 
   const fetchPost = () => {

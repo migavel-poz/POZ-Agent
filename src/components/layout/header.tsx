@@ -1,40 +1,51 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useUser } from "@/providers/user-provider";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+const roleLabels: Record<string, string> = {
+  employee: "Employee",
+  admin: "Admin",
+  designer: "Designer",
+  superadmin: "Super Admin",
+};
+
+const roleBadgeClass: Record<string, string> = {
+  employee: "bg-muted text-muted-foreground",
+  admin: "bg-blue-100 text-blue-700",
+  designer: "bg-purple-100 text-purple-700",
+  superadmin: "bg-red-100 text-red-700",
+};
 
 export function Header() {
-  const { currentUser, setCurrentUser, teamMembers } = useUser();
+  const router = useRouter();
+  const { currentUser, authRole } = useUser();
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <header className="h-14 border-b bg-card flex items-center justify-between px-6">
       <div />
       <div className="flex items-center gap-3">
-        <span className="text-sm text-muted-foreground">Logged in as:</span>
-        <Select
-          value={currentUser?.id?.toString() || ""}
-          onValueChange={(val) => {
-            const member = teamMembers.find((m) => m.id === Number(val));
-            if (member) setCurrentUser(member);
-          }}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select user" />
-          </SelectTrigger>
-          <SelectContent>
-            {teamMembers.map((member) => (
-              <SelectItem key={member.id} value={member.id.toString()}>
-                {member.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {currentUser && (
+          <>
+            <span className="text-sm font-medium">{currentUser.name}</span>
+            {authRole && (
+              <Badge variant="secondary" className={roleBadgeClass[authRole] || ""}>
+                {roleLabels[authRole] || authRole}
+              </Badge>
+            )}
+          </>
+        )}
+        <Button variant="outline" size="sm" onClick={handleLogout}>
+          Sign out
+        </Button>
       </div>
     </header>
   );

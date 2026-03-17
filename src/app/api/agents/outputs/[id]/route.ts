@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOutputById, updateOutput, deleteOutput } from "@/lib/db/agent-outputs";
 
+function checkSuperAdmin(request: NextRequest) {
+  if (request.headers.get("x-auth-role") !== "superadmin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return null;
+}
+
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const forbidden = checkSuperAdmin(request);
+  if (forbidden) return forbidden;
   try {
     const { id } = await params;
     const output = await getOutputById(Number(id));
@@ -22,6 +31,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const forbidden = checkSuperAdmin(request);
+  if (forbidden) return forbidden;
   try {
     const { id } = await params;
     const body = await request.json();
@@ -37,9 +48,11 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const forbidden = checkSuperAdmin(request);
+  if (forbidden) return forbidden;
   try {
     const { id } = await params;
     const deleted = await deleteOutput(Number(id));

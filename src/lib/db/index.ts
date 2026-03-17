@@ -1,43 +1,38 @@
-import { Pool, PoolClient } from "pg";
-import { initSchema } from "./schema";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-let db: Pool | null = null;
-let initPromise: Promise<void> | null = null;
+let db: SupabaseClient | null = null;
 
-function getConnectionString(): string {
-  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("Missing POSTGRES_URL or DATABASE_URL environment variable");
+function getSupabaseUrl(): string {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable");
   }
-  return connectionString;
+  return url;
 }
 
-export async function getDb(): Promise<Pool> {
-  if (!db) {
-    db = new Pool({ connectionString: getConnectionString() });
-    initPromise = initSchema(db);
+function getSupabaseAnonKey(): string {
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
+
+  if (!key) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY) environment variable"
+    );
   }
 
-  if (initPromise) {
-    await initPromise;
+  return key;
+}
+
+export function getDb(): SupabaseClient {
+  if (!db) {
+    db = createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
   }
 
   return db;
-}
-
-export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const pool = await getDb();
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
 }

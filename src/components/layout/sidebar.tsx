@@ -3,17 +3,26 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/providers/user-provider";
+import { AuthRole } from "@/lib/types";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: "BarChart3" },
-  { href: "/posts", label: "Posts", icon: "FileText" },
-  { href: "/posts/new", label: "Create Post", icon: "PlusCircle" },
-  { href: "/calendar", label: "Calendar", icon: "Calendar" },
-  { href: "/templates", label: "Templates", icon: "Layout" },
-  { href: "/catalog", label: "Agent Catalog", icon: "Layers" },
-  { href: "/agents", label: "Agents", icon: "Bot" },
-  { href: "/team", label: "Team", icon: "Users" },
-  { href: "/settings", label: "Settings", icon: "Settings" },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: string;
+  roles: AuthRole[];
+};
+
+const navItems: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: "BarChart3", roles: ["admin", "superadmin"] },
+  { href: "/posts", label: "Posts", icon: "FileText", roles: ["employee", "admin", "superadmin"] },
+  { href: "/posts/new", label: "Create Post", icon: "PlusCircle", roles: ["employee", "admin", "superadmin"] },
+  { href: "/calendar", label: "Calendar", icon: "Calendar", roles: ["employee", "admin", "superadmin"] },
+  { href: "/templates", label: "Templates", icon: "Layout", roles: ["employee", "admin", "superadmin"] },
+  { href: "/catalog", label: "Agent Catalog", icon: "Layers", roles: ["superadmin"] },
+  { href: "/agents", label: "Agents", icon: "Bot", roles: ["superadmin"] },
+  { href: "/team", label: "Team", icon: "Users", roles: ["admin", "superadmin"] },
+  { href: "/settings", label: "Settings", icon: "Settings", roles: ["superadmin"] },
 ];
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -48,6 +57,11 @@ const iconMap: Record<string, React.ReactNode> = {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { authRole } = useUser();
+
+  const visibleItems = navItems.filter(
+    (item) => authRole && item.roles.includes(authRole)
+  );
 
   return (
     <aside className="w-64 border-r bg-card min-h-screen flex flex-col">
@@ -56,7 +70,7 @@ export function Sidebar() {
         <p className="text-sm text-muted-foreground">AI Post Generator</p>
       </div>
       <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href) && item.href !== "/posts/new" && item.href !== "/posts");
           const isExactActive = pathname === item.href;
           const active = item.href === "/posts" ? pathname === "/posts" : item.href === "/posts/new" ? pathname === "/posts/new" : isActive || isExactActive;

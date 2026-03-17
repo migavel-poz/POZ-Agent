@@ -10,11 +10,14 @@ export type PostStatus =
 
 export type TeamRole = "member" | "lead" | "designer";
 
+export type AuthRole = "employee" | "admin" | "designer" | "superadmin";
+
 export interface TeamMember {
   id: number;
   name: string;
   email: string | null;
   role: TeamRole;
+  auth_role: AuthRole;
   created_at: string;
 }
 
@@ -78,6 +81,26 @@ export interface AppSetting {
   key: string;
   value: string;
   updated_at: string;
+}
+
+export interface PostComment {
+  id: number;
+  post_id: number;
+  author_id: number;
+  content: string;
+  created_at: string;
+  author_name?: string;
+}
+
+export interface Notification {
+  id: number;
+  user_id: number;
+  type: string;
+  post_id: number | null;
+  message: string;
+  is_read: boolean;
+  created_by: number | null;
+  created_at: string;
 }
 
 export interface DashboardStats {

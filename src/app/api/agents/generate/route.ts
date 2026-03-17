@@ -3,6 +3,9 @@ import { generateSkillOutput } from "@/lib/agents/generate";
 import { SkillId } from "@/lib/agents/types";
 
 export async function POST(request: NextRequest) {
+  if (request.headers.get("x-auth-role") !== "superadmin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   try {
     const body = await request.json();
     const { skillId, inputs } = body;

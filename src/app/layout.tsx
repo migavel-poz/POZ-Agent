@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/sidebar";
-import { Header } from "@/components/layout/header";
+import { Shell } from "@/components/layout/shell";
 import { UserProvider } from "@/providers/user-provider";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -30,13 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <UserProvider>
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <div className="flex-1 flex flex-col">
-              <Header />
-              <main className="flex-1 p-6 overflow-auto">{children}</main>
-            </div>
-          </div>
+          <Shell>{children}</Shell>
           <Toaster />
         </UserProvider>
       </body>

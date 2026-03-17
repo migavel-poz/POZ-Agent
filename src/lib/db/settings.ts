@@ -1,38 +1,49 @@
-import { getDb, withTransaction } from "./index";
+import { getDb } from "./index";
 
 export async function getSetting(key: string): Promise<string | undefined> {
-  const db = await getDb();
-  const row = await db.query<{ value: string }>("SELECT value FROM app_settings WHERE key = $1", [key]);
-  return row.rows[0]?.value;
+  const db = getDb();
+  const { data, error } = await db
+    .from("app_settings")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch setting ${key}: ${error.message}`);
+  return data?.value;
 }
 
 export async function getAllSettings(): Promise<Record<string, string>> {
-  const db = await getDb();
-  const rows = await db.query<{ key: string; value: string }>("SELECT key, value FROM app_settings");
-  return Object.fromEntries(rows.rows.map((r) => [r.key, r.value]));
+  const db = getDb();
+  const { data, error } = await db.from("app_settings").select("key, value");
+
+  if (error) throw new Error(`Failed to fetch settings: ${error.message}`);
+  return Object.fromEntries((data || []).map((row) => [row.key, row.value]));
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  const db = await getDb();
-  await db.query(
-    `
-      INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = NOW()
-    `,
-    [key, value]
+  const db = getDb();
+  const { error } = await db.from("app_settings").upsert(
+    {
+      key,
+      value,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "key" }
   );
+
+  if (error) throw new Error(`Failed to set setting ${key}: ${error.message}`);
 }
 
 export async function setMultipleSettings(settings: Record<string, string>): Promise<void> {
-  await withTransaction(async (client) => {
-    for (const [key, value] of Object.entries(settings)) {
-      await client.query(
-        `
-          INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = NOW()
-        `,
-        [key, value]
-      );
-    }
-  });
+  const db = getDb();
+  const rows = Object.entries(settings).map(([key, value]) => ({
+    key,
+    value,
+    updated_at: new Date().toISOString(),
+  }));
+
+  if (rows.length === 0) return;
+
+  const { error } = await db.from("app_settings").upsert(rows, { onConflict: "key" });
+  if (error) throw new Error(`Failed to set settings: ${error.message}`);
 }

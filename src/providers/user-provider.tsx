@@ -1,57 +1,57 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { TeamMember } from "@/lib/types";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { TeamMember, AuthRole } from "@/lib/types";
 
 interface UserContextType {
   currentUser: TeamMember | null;
-  setCurrentUser: (user: TeamMember) => void;
-  teamMembers: TeamMember[];
+  authRole: AuthRole | null;
   loading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType>({
   currentUser: null,
-  setCurrentUser: () => {},
-  teamMembers: [],
+  authRole: null,
   loading: true,
+  refreshUser: async () => {},
 });
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUserState] = useState<TeamMember | null>(null);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [currentUser, setCurrentUser] = useState<TeamMember | null>(null);
+  const [authRole, setAuthRole] = useState<AuthRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch("/api/team")
-      .then((res) => res.json())
-      .then((members: TeamMember[]) => {
-        setTeamMembers(members);
-        const savedId = localStorage.getItem("currentUserId");
-        if (savedId) {
-          const saved = members.find((m) => m.id === Number(savedId));
-          if (saved) {
-            setCurrentUserState(saved);
-          } else if (members.length > 0) {
-            setCurrentUserState(members[0]);
-            localStorage.setItem("currentUserId", String(members[0].id));
-          }
-        } else if (members.length > 0) {
-          setCurrentUserState(members[0]);
-          localStorage.setItem("currentUserId", String(members[0].id));
-        }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/session");
+      if (!res.ok) {
+        setCurrentUser(null);
+        setAuthRole(null);
+        return;
+      }
+      const data = await res.json();
+      if (data?.user) {
+        setCurrentUser(data.user);
+        setAuthRole(data.user.auth_role);
+      } else {
+        setCurrentUser(null);
+        setAuthRole(null);
+      }
+    } catch {
+      setCurrentUser(null);
+      setAuthRole(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const setCurrentUser = (user: TeamMember) => {
-    setCurrentUserState(user);
-    localStorage.setItem("currentUserId", String(user.id));
-  };
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
 
   return (
-    <UserContext.Provider value={{ currentUser, setCurrentUser, teamMembers, loading }}>
+    <UserContext.Provider value={{ currentUser, authRole, loading, refreshUser }}>
       {children}
     </UserContext.Provider>
   );

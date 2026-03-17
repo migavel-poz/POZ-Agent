@@ -1,9 +1,51 @@
 import { getDb } from "./index";
 import { Post, PostRevision, PostStatusHistory, PostStatus, PostType } from "../types";
 
+const POST_SELECT_COLS =
+  "id, title, content, post_type, status, platform, author_id, assigned_designer_id, scheduled_date, published_url, ai_prompt, ai_model, carousel_slides, hashtags, notes, created_at, updated_at";
+const REVISION_SELECT_COLS = "id, post_id, content, revised_by, revision_type, created_at";
+const STATUS_HISTORY_SELECT_COLS = "id, post_id, from_status, to_status, changed_by, note, created_at";
+
 function toNumber(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toIsoDate(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
+async function getMemberNameMap(ids: number[]): Promise<Map<number, string>> {
+  if (ids.length === 0) return new Map();
+
+  const db = getDb();
+  const { data, error } = await db.from("team_members").select("id, name").in("id", ids);
+
+  if (error) throw new Error(`Failed to fetch member names: ${error.message}`);
+  return new Map((data || []).map((member) => [member.id, member.name]));
+}
+
+async function enrichPostsWithNames(posts: Post[]): Promise<Post[]> {
+  if (posts.length === 0) return posts;
+
+  const memberIds = Array.from(
+    new Set(
+      posts
+        .flatMap((post) => [post.author_id, post.assigned_designer_id])
+        .filter((id): id is number => typeof id === "number")
+    )
+  );
+
+  const nameMap = await getMemberNameMap(memberIds);
+
+  return posts.map((post) => ({
+    ...post,
+    author_name: nameMap.get(post.author_id),
+    designer_name:
+      typeof post.assigned_designer_id === "number"
+        ? nameMap.get(post.assigned_designer_id)
+        : undefined,
+  }));
 }
 
 export async function getAllPosts(filters?: {
@@ -12,52 +54,31 @@ export async function getAllPosts(filters?: {
   author_id?: number;
   search?: string;
 }): Promise<Post[]> {
-  const db = await getDb();
-  let query = `
-    SELECT p.*, tm.name as author_name, d.name as designer_name
-    FROM posts p
-    JOIN team_members tm ON p.author_id = tm.id
-    LEFT JOIN team_members d ON p.assigned_designer_id = d.id
-    WHERE 1=1
-  `;
-  const params: unknown[] = [];
+  const db = getDb();
+  let query = db.from("posts").select(POST_SELECT_COLS).order("updated_at", { ascending: false });
 
-  if (filters?.status) {
-    params.push(filters.status);
-    query += ` AND p.status = $${params.length}`;
-  }
-  if (filters?.post_type) {
-    params.push(filters.post_type);
-    query += ` AND p.post_type = $${params.length}`;
-  }
-  if (filters?.author_id) {
-    params.push(filters.author_id);
-    query += ` AND p.author_id = $${params.length}`;
-  }
+  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.post_type) query = query.eq("post_type", filters.post_type);
+  if (filters?.author_id) query = query.eq("author_id", filters.author_id);
   if (filters?.search) {
-    const like = `%${filters.search}%`;
-    params.push(like);
-    const titleParam = params.length;
-    params.push(like);
-    const contentParam = params.length;
-    query += ` AND (p.title ILIKE $${titleParam} OR p.content ILIKE $${contentParam})`;
+    query = query.or(`title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`);
   }
 
-  query += " ORDER BY p.updated_at DESC";
-  const result = await db.query<Post>(query, params);
-  return result.rows;
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch posts: ${error.message}`);
+
+  return enrichPostsWithNames((data || []) as Post[]);
 }
 
 export async function getPostById(id: number): Promise<Post | undefined> {
-  const db = await getDb();
-  const result = await db.query<Post>(`
-    SELECT p.*, tm.name as author_name, d.name as designer_name
-    FROM posts p
-    JOIN team_members tm ON p.author_id = tm.id
-    LEFT JOIN team_members d ON p.assigned_designer_id = d.id
-    WHERE p.id = $1
-  `, [id]);
-  return result.rows[0];
+  const db = getDb();
+  const { data, error } = await db.from("posts").select(POST_SELECT_COLS).eq("id", id).maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch post: ${error.message}`);
+  if (!data) return undefined;
+
+  const [post] = await enrichPostsWithNames([data as Post]);
+  return post;
 }
 
 export async function createPost(data: {
@@ -72,73 +93,82 @@ export async function createPost(data: {
   hashtags?: string;
   scheduled_date?: string;
 }): Promise<Post> {
-  const db = await getDb();
-  const result = await db.query<{ id: number }>(`
-    INSERT INTO posts (title, content, post_type, author_id, platform, ai_prompt, ai_model, carousel_slides, hashtags, scheduled_date)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    RETURNING id
-  `, [
-    data.title,
-    data.content,
-    data.post_type,
-    data.author_id,
-    data.platform || "linkedin",
-    data.ai_prompt || null,
-    data.ai_model || null,
-    data.carousel_slides || null,
-    data.hashtags || null,
-    data.scheduled_date || null,
-  ]);
+  const db = getDb();
+  const { data: created, error } = await db
+    .from("posts")
+    .insert({
+      title: data.title,
+      content: data.content,
+      post_type: data.post_type,
+      author_id: data.author_id,
+      platform: data.platform || "linkedin",
+      ai_prompt: data.ai_prompt || null,
+      ai_model: data.ai_model || null,
+      carousel_slides: data.carousel_slides || null,
+      hashtags: data.hashtags || null,
+      scheduled_date: data.scheduled_date || null,
+    })
+    .select("id")
+    .single();
 
-  const postId = result.rows[0].id;
+  if (error) throw new Error(`Failed to create post: ${error.message}`);
 
-  await db.query(`
-    INSERT INTO post_status_history (post_id, from_status, to_status, changed_by)
-    VALUES ($1, NULL, 'draft', $2)
-  `, [postId, data.author_id]);
+  const postId = created.id;
 
-  await db.query(`
-    INSERT INTO post_revisions (post_id, content, revised_by, revision_type)
-    VALUES ($1, $2, $3, 'ai_generated')
-  `, [postId, data.content, data.author_id]);
+  const { error: historyError } = await db.from("post_status_history").insert({
+    post_id: postId,
+    from_status: null,
+    to_status: "draft",
+    changed_by: data.author_id,
+  });
+  if (historyError) throw new Error(`Failed to create status history: ${historyError.message}`);
 
-  return (await getPostById(postId))!;
+  const { error: revisionError } = await db.from("post_revisions").insert({
+    post_id: postId,
+    content: data.content,
+    revised_by: data.author_id,
+    revision_type: "ai_generated",
+  });
+  if (revisionError) throw new Error(`Failed to create initial revision: ${revisionError.message}`);
+
+  const post = await getPostById(postId);
+  if (!post) throw new Error("Created post was not found");
+  return post;
 }
 
-export async function updatePost(id: number, data: Partial<{
-  title: string;
-  content: string;
-  scheduled_date: string | null;
-  assigned_designer_id: number | null;
-  hashtags: string | null;
-  notes: string | null;
-  published_url: string | null;
-  carousel_slides: string | null;
-}>): Promise<Post | undefined> {
-  const db = await getDb();
-  const fields: string[] = [];
-  const values: unknown[] = [];
+export async function updatePost(
+  id: number,
+  data: Partial<{
+    title: string;
+    content: string;
+    scheduled_date: string | null;
+    assigned_designer_id: number | null;
+    hashtags: string | null;
+    notes: string | null;
+    published_url: string | null;
+    carousel_slides: string | null;
+  }>
+): Promise<Post | undefined> {
+  const db = getDb();
+  const payload = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
 
-  for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
-      values.push(value);
-      fields.push(`${key} = $${values.length}`);
-    }
-  }
+  if (Object.keys(payload).length === 0) return getPostById(id);
 
-  if (fields.length === 0) return getPostById(id);
+  const { error } = await db
+    .from("posts")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", id);
 
-  fields.push("updated_at = NOW()");
-  values.push(id);
-
-  await db.query(`UPDATE posts SET ${fields.join(", ")} WHERE id = $${values.length}`, values);
+  if (error) throw new Error(`Failed to update post: ${error.message}`);
   return getPostById(id);
 }
 
 export async function deletePost(id: number): Promise<boolean> {
-  const db = await getDb();
-  const result = await db.query("DELETE FROM posts WHERE id = $1", [id]);
-  return (result.rowCount || 0) > 0;
+  const db = getDb();
+  const { data, error } = await db.from("posts").delete().eq("id", id).select("id");
+
+  if (error) throw new Error(`Failed to delete post: ${error.message}`);
+  return (data?.length || 0) > 0;
 }
 
 export async function transitionPostStatus(
@@ -147,133 +177,220 @@ export async function transitionPostStatus(
   changedBy: number,
   note?: string
 ): Promise<Post | undefined> {
-  const db = await getDb();
+  const db = getDb();
   const post = await getPostById(id);
   if (!post) return undefined;
 
-  await db.query("UPDATE posts SET status = $1, updated_at = NOW() WHERE id = $2", [newStatus, id]);
+  const { error: updateError } = await db
+    .from("posts")
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (updateError) throw new Error(`Failed to update post status: ${updateError.message}`);
 
-  await db.query(`
-    INSERT INTO post_status_history (post_id, from_status, to_status, changed_by, note)
-    VALUES ($1, $2, $3, $4, $5)
-  `, [id, post.status, newStatus, changedBy, note || null]);
+  const { error: historyError } = await db.from("post_status_history").insert({
+    post_id: id,
+    from_status: post.status,
+    to_status: newStatus,
+    changed_by: changedBy,
+    note: note || null,
+  });
+  if (historyError) throw new Error(`Failed to add status history: ${historyError.message}`);
 
   return getPostById(id);
 }
 
-export async function addRevision(postId: number, content: string, revisedBy: number, type: string): Promise<PostRevision> {
-  const db = await getDb();
-  const result = await db.query<PostRevision>(`
-    INSERT INTO post_revisions (post_id, content, revised_by, revision_type)
-    VALUES ($1, $2, $3, $4)
-    RETURNING *
-  `, [postId, content, revisedBy, type]);
-  return result.rows[0];
+export async function addRevision(
+  postId: number,
+  content: string,
+  revisedBy: number,
+  type: string
+): Promise<PostRevision> {
+  const db = getDb();
+  const { data, error } = await db
+    .from("post_revisions")
+    .insert({
+      post_id: postId,
+      content,
+      revised_by: revisedBy,
+      revision_type: type,
+    })
+    .select(REVISION_SELECT_COLS)
+    .single();
+
+  if (error) throw new Error(`Failed to add revision: ${error.message}`);
+  return data as PostRevision;
 }
 
 export async function getRevisions(postId: number): Promise<PostRevision[]> {
-  const db = await getDb();
-  const result = await db.query<PostRevision>(`
-    SELECT pr.*, tm.name as revised_by_name
-    FROM post_revisions pr
-    JOIN team_members tm ON pr.revised_by = tm.id
-    WHERE pr.post_id = $1
-    ORDER BY pr.created_at DESC
-  `, [postId]);
-  return result.rows;
+  const db = getDb();
+  const { data, error } = await db
+    .from("post_revisions")
+    .select(REVISION_SELECT_COLS)
+    .eq("post_id", postId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`Failed to fetch revisions: ${error.message}`);
+
+  const rows = (data || []) as PostRevision[];
+  const revisedByIds = Array.from(new Set(rows.map((row) => row.revised_by)));
+  const nameMap = await getMemberNameMap(revisedByIds);
+
+  return rows.map((row) => ({
+    ...row,
+    revised_by_name: nameMap.get(row.revised_by),
+  }));
 }
 
 export async function getStatusHistory(postId: number): Promise<PostStatusHistory[]> {
-  const db = await getDb();
-  const result = await db.query<PostStatusHistory>(`
-    SELECT psh.*, tm.name as changed_by_name
-    FROM post_status_history psh
-    JOIN team_members tm ON psh.changed_by = tm.id
-    WHERE psh.post_id = $1
-    ORDER BY psh.created_at DESC
-  `, [postId]);
-  return result.rows;
+  const db = getDb();
+  const { data, error } = await db
+    .from("post_status_history")
+    .select(STATUS_HISTORY_SELECT_COLS)
+    .eq("post_id", postId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`Failed to fetch status history: ${error.message}`);
+
+  const rows = (data || []) as PostStatusHistory[];
+  const changedByIds = Array.from(new Set(rows.map((row) => row.changed_by)));
+  const nameMap = await getMemberNameMap(changedByIds);
+
+  return rows.map((row) => ({
+    ...row,
+    changed_by_name: nameMap.get(row.changed_by),
+  }));
 }
 
-export async function getPostsByWeek(weekStart: string): Promise<Post[]> {
-  const db = await getDb();
-  const result = await db.query<Post>(`
-    SELECT p.*, tm.name as author_name, d.name as designer_name
-    FROM posts p
-    JOIN team_members tm ON p.author_id = tm.id
-    LEFT JOIN team_members d ON p.assigned_designer_id = d.id
-    WHERE p.scheduled_date >= $1::date AND p.scheduled_date < ($1::date + INTERVAL '7 days')
-    ORDER BY p.scheduled_date ASC
-  `, [weekStart]);
-  return result.rows;
+export async function getPostsByWeek(weekStart: string, authorId?: number): Promise<Post[]> {
+  const db = getDb();
+
+  const start = new Date(`${weekStart}T00:00:00.000Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 7);
+  const weekEnd = toIsoDate(end);
+
+  let query = db
+    .from("posts")
+    .select(POST_SELECT_COLS)
+    .gte("scheduled_date", weekStart)
+    .lt("scheduled_date", weekEnd)
+    .order("scheduled_date", { ascending: true });
+
+  if (authorId) {
+    query = query.eq("author_id", authorId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch weekly posts: ${error.message}`);
+
+  return enrichPostsWithNames((data || []) as Post[]);
 }
 
 export async function getDashboardStats() {
-  const db = await getDb();
+  const db = getDb();
 
-  const totalPostsResult = await db.query<{ count: number }>("SELECT COUNT(*)::int as count FROM posts");
-  const totalPosts = toNumber(totalPostsResult.rows[0]?.count);
+  const { count: totalPostsCount, error: totalError } = await db
+    .from("posts")
+    .select("id", { count: "exact", head: true });
+  if (totalError) throw new Error(`Failed to fetch total posts count: ${totalError.message}`);
 
   const now = new Date();
   const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay() + 1);
-  const weekStartStr = weekStart.toISOString().split("T")[0];
-  const postsThisWeekResult = await db.query<{ count: number }>(
-    "SELECT COUNT(*)::int as count FROM posts WHERE created_at >= $1",
-    [weekStartStr]
-  );
-  const postsThisWeek = toNumber(postsThisWeekResult.rows[0]?.count);
+  const day = weekStart.getDay();
+  const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+  weekStart.setDate(diff);
+  weekStart.setHours(0, 0, 0, 0);
+  const weekStartStr = toIsoDate(weekStart);
 
-  const inPipelineResult = await db.query<{ count: number }>(
-    "SELECT COUNT(*)::int as count FROM posts WHERE status NOT IN ('draft', 'published')"
-  );
-  const inPipeline = toNumber(inPipelineResult.rows[0]?.count);
+  const { count: postsThisWeekCount, error: weekError } = await db
+    .from("posts")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", weekStartStr);
+  if (weekError) throw new Error(`Failed to fetch posts this week: ${weekError.message}`);
+
+  const { count: inPipelineCount, error: pipelineError } = await db
+    .from("posts")
+    .select("id", { count: "exact", head: true })
+    .not("status", "in", '("draft","published")');
+  if (pipelineError) throw new Error(`Failed to fetch pipeline count: ${pipelineError.message}`);
 
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const publishedThisMonthResult = await db.query<{ count: number }>(
-    "SELECT COUNT(*)::int as count FROM posts WHERE status = 'published' AND updated_at >= $1",
-    [monthStart]
-  );
-  const publishedThisMonth = toNumber(publishedThisMonthResult.rows[0]?.count);
+  const { count: publishedThisMonthCount, error: publishedError } = await db
+    .from("posts")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "published")
+    .gte("updated_at", monthStart);
+  if (publishedError) throw new Error(`Failed to fetch published count: ${publishedError.message}`);
 
-  const statusCountsResult = await db.query<{ status: string; count: number }>(
-    "SELECT status, COUNT(*)::int as count FROM posts GROUP BY status"
-  );
+  const { data: statusRows, error: statusError } = await db.from("posts").select("status");
+  if (statusError) throw new Error(`Failed to fetch status breakdown: ${statusError.message}`);
 
-  const typeCountsResult = await db.query<{ post_type: string; count: number }>(
-    "SELECT post_type, COUNT(*)::int as count FROM posts GROUP BY post_type"
-  );
+  const { data: typeRows, error: typeError } = await db.from("posts").select("post_type");
+  if (typeError) throw new Error(`Failed to fetch type breakdown: ${typeError.message}`);
 
-  const teamContributionsResult = await db.query<{ name: string; posts_created: number; posts_published: number }>(`
-    SELECT tm.name,
-      COUNT(p.id)::int as posts_created,
-      COUNT(CASE WHEN p.status = 'published' THEN 1 END)::int as posts_published
-    FROM team_members tm
-    LEFT JOIN posts p ON p.author_id = tm.id
-    GROUP BY tm.id
-    ORDER BY posts_created DESC
-  `);
+  const { data: teamRows, error: teamError } = await db
+    .from("team_members")
+    .select("id, name")
+    .order("name");
+  if (teamError) throw new Error(`Failed to fetch team members: ${teamError.message}`);
 
-  const recentActivityResult = await db.query<PostStatusHistory>(`
-    SELECT psh.*, tm.name as changed_by_name
-    FROM post_status_history psh
-    JOIN team_members tm ON psh.changed_by = tm.id
-    ORDER BY psh.created_at DESC
-    LIMIT 10
-  `);
+  const { data: contributionRows, error: contributionError } = await db
+    .from("posts")
+    .select("author_id, status");
+  if (contributionError) throw new Error(`Failed to fetch contribution rows: ${contributionError.message}`);
+
+  const { data: activityRows, error: activityError } = await db
+    .from("post_status_history")
+    .select(STATUS_HISTORY_SELECT_COLS)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (activityError) throw new Error(`Failed to fetch recent activity: ${activityError.message}`);
+
+  const postsByStatus = (statusRows || []).reduce<Record<string, number>>((acc, row) => {
+    const key = row.status || "draft";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const postsByType = (typeRows || []).reduce<Record<string, number>>((acc, row) => {
+    const key = row.post_type || "educational";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const contributionMap = new Map<number, { name: string; posts_created: number; posts_published: number }>();
+  for (const member of teamRows || []) {
+    contributionMap.set(member.id, {
+      name: member.name,
+      posts_created: 0,
+      posts_published: 0,
+    });
+  }
+
+  for (const row of contributionRows || []) {
+    const item = contributionMap.get(row.author_id);
+    if (!item) continue;
+    item.posts_created += 1;
+    if (row.status === "published") item.posts_published += 1;
+  }
+
+  const recentActivity = (activityRows || []) as PostStatusHistory[];
+  const changedByIds = Array.from(new Set(recentActivity.map((item) => item.changed_by)));
+  const changedByMap = await getMemberNameMap(changedByIds);
 
   return {
-    totalPosts,
-    postsThisWeek,
-    inPipeline,
-    publishedThisMonth,
-    postsByStatus: Object.fromEntries(statusCountsResult.rows.map((s) => [s.status, toNumber(s.count)])),
-    postsByType: Object.fromEntries(typeCountsResult.rows.map((t) => [t.post_type, toNumber(t.count)])),
-    teamContributions: teamContributionsResult.rows.map((item) => ({
-      name: item.name,
-      posts_created: toNumber(item.posts_created),
-      posts_published: toNumber(item.posts_published),
+    totalPosts: toNumber(totalPostsCount),
+    postsThisWeek: toNumber(postsThisWeekCount),
+    inPipeline: toNumber(inPipelineCount),
+    publishedThisMonth: toNumber(publishedThisMonthCount),
+    postsByStatus,
+    postsByType,
+    teamContributions: Array.from(contributionMap.values()).sort(
+      (a, b) => b.posts_created - a.posts_created
+    ),
+    recentActivity: recentActivity.map((item) => ({
+      ...item,
+      changed_by_name: changedByMap.get(item.changed_by),
     })),
-    recentActivity: recentActivityResult.rows,
   };
 }

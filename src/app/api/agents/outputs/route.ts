@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllOutputs, createOutput } from "@/lib/db/agent-outputs";
 
+function checkSuperAdmin(request: NextRequest) {
+  if (request.headers.get("x-auth-role") !== "superadmin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
+  const forbidden = checkSuperAdmin(request);
+  if (forbidden) return forbidden;
   try {
     const params = request.nextUrl.searchParams;
     const outputs = await getAllOutputs({
@@ -19,6 +28,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const forbidden = checkSuperAdmin(request);
+  if (forbidden) return forbidden;
   try {
     const body = await request.json();
     const { agent_id, skill_id, title, input_params, output_json, created_by } = body;
